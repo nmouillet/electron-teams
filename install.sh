@@ -65,4 +65,4 @@ update-desktop-database -q "$APPS" 2>/dev/null || true
 xdg-mime default "$NOM.desktop" x-scheme-handler/msteams
 
 echo "✅ electron-teams installé : menu de Plasma → Teams."
-[ -f "$DEMARRAGE/$NOM.desktop" ] && echo "   Démarre avec la session, réduit dans la barre des tâches."
+if [ -f "$DEMARRAGE/$NOM.desktop" ]; then echo "   Démarre avec la session, réduit dans la barre des tâches."; fi
