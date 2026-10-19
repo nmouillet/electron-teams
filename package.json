@@ -1,0 +1,11 @@
+{
+  "name": "electron-teams",
+  "productName": "Teams",
+  "version": "0.1.0",
+  "description": "Microsoft Teams web dans une fenêtre Electron : appels, partage d'écran sous Wayland, bulle de non-lus dans la barre des tâches de KDE",
+  "main": "main.js",
+  "desktopName": "electron-teams.desktop",
+  "private": true,
+  "license": "MIT",
+  "author": "Nicolas Mouillet <ni.mouillet@gmail.com>"
+}
