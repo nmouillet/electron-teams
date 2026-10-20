@@ -44,6 +44,10 @@ Le lanceur pointe vers le dossier du dépôt : relancer `install.sh` si le dossi
   déjà présents ne colorent pas le bouton.
 - **Fermer, c'est réduire** : le bouton reste dans la barre des tâches, avec sa bulle. Pour quitter : clic droit
   sur l'icône de la zone de notification → *Quitter*.
+  Sauf à la déconnexion ou à l'extinction : KWin demande alors à chaque fenêtre de se fermer, et une
+  fenêtre qui se réduit bloque la fin de session (« Les applications suivantes n'ont pas été fermées »,
+  déconnexion forcée au bout de 2 minutes). À chaque demande de fermeture, l'application interroge donc
+  ksmserver par D-Bus (`org.kde.KSMServerInterface.isShuttingDown`) : si la session se termine, elle quitte.
 - **Appels** :
   - micro, caméra, sortie audio, partage d'écran, écran gardé allumé : permissions accordées aux seuls domaines Microsoft ;
   - partage d'écran sous Wayland : option Chromium `WebRTCPipeWireCapturer`. Chromium ouvre le sélecteur

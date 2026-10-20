@@ -1,7 +1,7 @@
 'use strict';
 // electron-teams : Microsoft Teams web dans sa propre fenêtre, avec l'Electron des dépôts Arch.
 // Même principe qu'electron-outlook (bulle de non-lus et fond orange dans la barre des tâches de KDE,
-// zone de notification, fermeture = réduction, lancement réduit), plus ce qu'il faut pour les appels :
+// zone de notification, fermeture = réduction (sauf en fin de session), lancement réduit), plus ce qu'il faut pour les appels :
 // micro, caméra, partage d'écran sous Wayland (portail xdg-desktop-portal via PipeWire), sonneries
 // fenêtre réduite. Techniques reprises de teams-for-linux (GPL-3.0), code réécrit.
 const { app, BrowserWindow, Menu, Tray, desktopCapturer, session, shell } = require('electron');
@@ -79,6 +79,16 @@ function gdbus(args, rappel) {
     if (err) console.error('[electron-teams] gdbus :', err.message);
     else if (rappel) rappel(sortie);
   });
+}
+
+// --- Déconnexion ou extinction : KWin demande à chaque fenêtre de se fermer, puis attend.
+// Ce n'est pas le moment de réduire : la fenêtre resterait et KWin afficherait « Les applications
+// suivantes n'ont pas été fermées », avec une déconnexion forcée au bout de 2 minutes.
+// ksmserver répond isShuttingDown = true pendant toute la fin de session (false hors KDE ou en cas d'erreur).
+function finDeSession(rappel) {
+  execFile('gdbus', ['call', '--session', '--dest', 'org.kde.ksmserver', '--object-path', '/KSMServer',
+    '--method', 'org.kde.KSMServerInterface.isShuttingDown'], { timeout: 2000 },
+  (err, sortie) => rappel(!err && /true/.test(sortie)));
 }
 
 // --- Fond orange du bouton dans la barre des tâches (« demande l'attention »).
@@ -186,8 +196,16 @@ function creerFenetre(masquee, url) {
 
   fenetre.on('close', (e) => {
     enregistrerEtatFenetre();
+    if (quitter) return;
     // Réduire plutôt que cacher : le bouton de la barre des tâches (bulle, fond orange) reste visible.
-    if (!quitter) { e.preventDefault(); fenetre.minimize(); }
+    // Sauf en fin de session, où l'on quitte vraiment.
+    e.preventDefault();
+    finDeSession((oui) => {
+      if (!oui) { if (fenetre && !fenetre.isDestroyed()) fenetre.minimize(); return; }
+      log('fin de session : fermeture');
+      quitter = true;
+      app.quit();
+    });
   });
   fenetre.on('resize', enregistrerEtatFenetre);
   fenetre.on('move', enregistrerEtatFenetre);
