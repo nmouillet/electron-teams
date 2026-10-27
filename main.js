@@ -4,7 +4,7 @@
 // zone de notification, fermeture = réduction (sauf en fin de session), lancement réduit), plus ce qu'il faut pour les appels :
 // micro, caméra, partage d'écran sous Wayland (portail xdg-desktop-portal via PipeWire), sonneries
 // fenêtre réduite. Techniques reprises de teams-for-linux (GPL-3.0), code réécrit.
-const { app, BrowserWindow, Menu, Tray, clipboard, desktopCapturer, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, clipboard, desktopCapturer, ipcMain, session, shell } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -15,6 +15,23 @@ const PARTITION = 'persist:teams';
 const DEBUG = process.env.ELECTRON_TEAMS_DEBUG === '1';
 const ICONE = path.join(__dirname, 'icones', `${NOM}-64.png`);
 const ICONE_ZONE = path.join(__dirname, 'icones', `${NOM}-32.png`);
+// Pastille de disponibilité sur l'icône de la zone de notification, pour chaque statut lu dans Teams (preload.js).
+const iconeStatut = (nom) => path.join(__dirname, 'icones', `statut-${nom}-32.png`);
+const PRESENCES = {
+  disponible: { icone: iconeStatut('disponible'), libelle: 'Disponible' },
+  'apparaitre-absent': { icone: iconeStatut('apparaitre-absent'), libelle: 'Apparaître absent' },
+  'de-retour': { icone: iconeStatut('de-retour'), libelle: 'De retour sous peu' },
+  absent: { icone: iconeStatut('absent'), libelle: 'Absent' },
+  'hors-bureau': { icone: iconeStatut('hors-bureau'), libelle: 'Hors bureau' },
+  occupe: { icone: iconeStatut('occupe'), libelle: 'Occupé' },
+  'en-appel': { icone: iconeStatut('en-appel'), libelle: 'En appel' },
+  'en-reunion': { icone: iconeStatut('en-reunion'), libelle: 'En réunion' },
+  presentation: { icone: iconeStatut('presentation'), libelle: 'Présentation en cours' },
+  'ne-pas-deranger': { icone: iconeStatut('ne-pas-deranger'), libelle: 'Ne pas déranger' },
+  concentration: { icone: iconeStatut('concentration'), libelle: 'Concentration' },
+  'hors-ligne': { icone: iconeStatut('hors-ligne'), libelle: 'Hors ligne' },
+  inconnu: { icone: iconeStatut('inconnu'), libelle: 'Statut inconnu' },
+};
 // Données (session Microsoft, cache, fenêtre) dans ~/.config/electron-teams.
 app.setPath('userData', path.join(app.getPath('appData'), NOM));
 const FICHIER_FENETRE = path.join(app.getPath('userData'), 'fenetre.json');
@@ -112,6 +129,7 @@ let fenetre = null;
 let zone = null;
 let quitter = false;
 let nonLus = -1;
+let presence = null;
 let finDemarrage = Infinity;
 
 function gdbus(args, rappel) {
@@ -163,7 +181,25 @@ function majNonLus(n) {
   const proprietes = n > 0 ? `{'count': <int64 ${n}>, 'count-visible': <true>}` : "{'count-visible': <false>}";
   gdbus(['emit', '--session', '--object-path', '/com/canonical/unity/launcherentry/1',
     '--signal', 'com.canonical.Unity.LauncherEntry.Update', `application://${NOM}.desktop`, proprietes]);
-  if (zone) zone.setToolTip(n > 0 ? `Teams — ${n} non lu${n > 1 ? 's' : ''}` : 'Teams');
+  majInfobulle();
+}
+
+// --- Infobulle de la zone de notification : statut Teams puis nombre de non-lus.
+function majInfobulle() {
+  if (!zone) return;
+  const morceaux = ['Teams'];
+  if (presence) morceaux.push(PRESENCES[presence].libelle);
+  if (nonLus > 0) morceaux.push(`${nonLus} non lu${nonLus > 1 ? 's' : ''}`);
+  zone.setToolTip(morceaux.join(' — '));
+}
+
+// --- Pastille de disponibilité : statut envoyé par preload.js, affiché sur l'icône de la zone de notification.
+function majPresence(statut) {
+  presence = Object.hasOwn(PRESENCES, statut) ? statut : null;
+  log('présence :', presence);
+  if (!zone) return;
+  zone.setImage(presence ? PRESENCES[presence].icone : ICONE_ZONE);
+  majInfobulle();
 }
 
 // --- Taille et position de la fenêtre, retenues d'une session à l'autre.
@@ -210,6 +246,8 @@ function creerFenetre(masquee, url) {
   });
 
   const wc = fenetre.webContents;
+  // Mode debug : inspecteur détaché, pour repérer l'élément qui porte le statut dans l'en-tête de Teams.
+  if (DEBUG) wc.openDevTools({ mode: 'detach' });
 
   // Nouvelles fenêtres : celles de Microsoft (connexion, conversation détachée) restent ici, le reste va dans le navigateur.
   wc.setWindowOpenHandler(({ url: cible }) => {
@@ -277,6 +315,7 @@ function creerZoneNotification() {
   zone.on('click', () => (fenetre && fenetre.isVisible() && !fenetre.isMinimized() && fenetre.isFocused() ? fenetre.minimize() : afficher()));
 }
 
+ipcMain.on('presence', (_e, statut) => majPresence(statut));
 app.on('second-instance', (_e, argv) => {
   const lien = lienTeams(argv);
   if (lien && fenetre) { log('lien reçu :', lien); fenetre.webContents.loadURL(lien); }
