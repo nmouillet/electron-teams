@@ -4,7 +4,7 @@
 // zone de notification, fermeture = réduction (sauf en fin de session), lancement réduit), plus ce qu'il faut pour les appels :
 // micro, caméra, partage d'écran sous Wayland (portail xdg-desktop-portal via PipeWire), sonneries
 // fenêtre réduite. Techniques reprises de teams-for-linux (GPL-3.0), code réécrit.
-const { app, BrowserWindow, Menu, Tray, clipboard, desktopCapturer, ipcMain, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, clipboard, desktopCapturer, ipcMain, nativeImage, session, shell } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -31,6 +31,15 @@ const PRESENCES = {
   concentration: { icone: iconeStatut('concentration'), libelle: 'Concentration' },
   'hors-ligne': { icone: iconeStatut('hors-ligne'), libelle: 'Hors ligne' },
   inconnu: { icone: iconeStatut('inconnu'), libelle: 'Statut inconnu' },
+};
+// Identifiants du menu de statut de Teams, pour un statut choisi à la main (zone de notification, lanceur).
+const STATUTS_TEAMS = {
+  disponible: 'available',
+  occupe: 'busy',
+  'ne-pas-deranger': 'do_not_disturb',
+  'de-retour': 'be_right_back',
+  'apparaitre-absent': 'appear_away',
+  'hors-ligne': 'appear_offline',
 };
 // Données (session Microsoft, cache, fenêtre) dans ~/.config/electron-teams.
 app.setPath('userData', path.join(app.getPath('appData'), NOM));
@@ -202,6 +211,43 @@ function majPresence(statut) {
   majInfobulle();
 }
 
+// --- Statut choisi à la main : la fonction ci-dessous est exécutée dans la page Teams. Elle ouvre le menu du profil,
+// passe au sous-menu de statut et clique sur le statut demandé ; l'identifiant est le seul argument.
+async function statutTeams(identifiant) {
+  const attendre = (selecteur) => new Promise((resolve, reject) => {
+    const fin = Date.now() + 60000;
+    const chercher = () => {
+      const el = document.querySelector(selecteur);
+      if (el) resolve(el);
+      else if (Date.now() > fin) reject(new Error(`introuvable : ${selecteur}`));
+      else setTimeout(chercher, 300);
+    };
+    chercher();
+  });
+  const profil = await attendre('[data-tid="me-control-avatar-trigger"]');
+  if (!document.querySelector('[data-tid="me-control-menu"]')) profil.click();
+  (await attendre('[data-tid="set-presence-status-menu-item"]')).click();
+  (await attendre(`[data-tid="me_control_presence_availability_${identifiant}"]`)).click();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (document.querySelector('[data-tid="me-control-menu"]')) document.querySelector('[data-tid="me-control-avatar-trigger"]').click();
+  return 'statut envoyé';
+}
+
+function changerStatut(cle) {
+  if (!fenetre || !Object.hasOwn(STATUTS_TEAMS, cle)) return;
+  log('statut demandé :', cle);
+  fenetre.webContents.executeJavaScript(`(${statutTeams})(${JSON.stringify(STATUTS_TEAMS[cle])})`)
+    .then((resultat) => log(resultat))
+    .catch((err) => console.error('[electron-teams] statut :', err.message));
+}
+
+// Argument --statut=<clé> (action du lanceur) : statut à appliquer, ou null.
+function statutDemande(argv) {
+  const argument = argv.find((a) => a.startsWith('--statut='));
+  const cle = argument ? argument.slice('--statut='.length) : null;
+  return Object.hasOwn(STATUTS_TEAMS, cle) ? cle : null;
+}
+
 // --- Taille et position de la fenêtre, retenues d'une session à l'autre.
 function lireEtatFenetre() {
   try { return JSON.parse(fs.readFileSync(FICHIER_FENETRE, 'utf8')); } catch { return { width: 1400, height: 900 }; }
@@ -309,6 +355,11 @@ function creerZoneNotification() {
   zone.setContextMenu(Menu.buildFromTemplate([
     { label: 'Afficher Teams', click: afficher },
     { label: 'Recharger', click: () => fenetre && fenetre.webContents.reload() },
+    { label: 'Statut', submenu: Object.keys(STATUTS_TEAMS).map((cle) => ({
+      label: PRESENCES[cle].libelle,
+      icon: nativeImage.createFromPath(PRESENCES[cle].icone).resize({ width: 16 }),
+      click: () => changerStatut(cle),
+    })) },
     { type: 'separator' },
     { label: 'Quitter', click: () => { quitter = true; app.quit(); } },
   ]));
@@ -317,6 +368,8 @@ function creerZoneNotification() {
 
 ipcMain.on('presence', (_e, statut) => majPresence(statut));
 app.on('second-instance', (_e, argv) => {
+  const statut = statutDemande(argv);
+  if (statut) { changerStatut(statut); return; }
   const lien = lienTeams(argv);
   if (lien && fenetre) { log('lien reçu :', lien); fenetre.webContents.loadURL(lien); }
   afficher();
@@ -349,5 +402,7 @@ app.whenReady().then(() => {
 
   creerZoneNotification();
   creerFenetre(process.argv.includes('--masquee'), lienTeams(process.argv));
+  const statut = statutDemande(process.argv);
+  if (statut) fenetre.webContents.once('did-finish-load', () => changerStatut(statut));
   majNonLus(0);
 });

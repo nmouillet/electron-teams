@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installe electron-teams pour l'utilisateur courant (aucun droit admin, rejouable).
-# - lanceur ~/.local/share/applications/electron-teams.desktop (menu de Plasma) ;
+# - lanceur ~/.local/share/applications/electron-teams.desktop (menu de Plasma, statuts Teams en actions) ;
 # - icônes dans ~/.local/share/icons/hicolor ;
 # - liens msteams: (réunions) ouverts dans electron-teams ;
 # - démarrage avec la session, réduit dans la barre des tâches, seulement avec --demarrage
@@ -37,6 +37,15 @@ for t in 32 64 256; do
     install -Dm644 "$DOSSIER/icones/$NOM-$t.png" "$ICONES/${t}x${t}/apps/$NOM.png"
 done
 
+actions() {  # statuts Teams en actions du lanceur (clic droit sur l'icône de la barre des tâches)
+    local statuts=(disponible:Disponible occupe:Occupé ne-pas-deranger:"Ne pas déranger" de-retour:"De retour sous peu" apparaitre-absent:"Apparaître absent" hors-ligne:"Hors ligne")
+    local paire
+    echo "Actions=$(printf '%s;' "${statuts[@]%%:*}")"
+    for paire in "${statuts[@]}"; do
+        printf '\n[Desktop Action %s]\nName=%s\nIcon=%s\nExec=/usr/bin/electron "%s" --statut=%s\n' "${paire%%:*}" "${paire#*:}" "$DOSSIER/icones/statut-${paire%%:*}-32.png" "$DOSSIER" "${paire%%:*}"
+    done
+}
+
 lanceur() {  # $1 = arguments en plus
     cat <<EOF
 [Desktop Entry]
@@ -54,7 +63,7 @@ StartupNotify=true
 EOF
 }
 
-lanceur "" > "$APPS/$NOM.desktop"
+{ lanceur ""; actions; } > "$APPS/$NOM.desktop"
 if [ "${1:-}" = --demarrage ]; then
     mkdir -p "$DEMARRAGE"
     { lanceur " --masquee"; echo "X-KDE-autostart-phase=2"; } > "$DEMARRAGE/$NOM.desktop"
