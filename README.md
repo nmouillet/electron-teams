@@ -43,6 +43,10 @@ Le lanceur pointe vers le dossier du dépôt : relancer `install.sh` si le dossi
   chargé par D-Bus met `demandsAttention` à vrai (`flashFrame` d'Electron ne fait rien sous Wayland).
   Le point de départ est pris 20 s après le premier écran de Teams, et repris à chaque rechargement : les messages
   déjà présents ne colorent pas le bouton.
+- **Clic sur une notification** : Teams ouvre la conversation dans la page, mais son `window.focus()` laisse la
+  fenêtre réduite sous Wayland. `preload.js` enveloppe le constructeur `Notification` de la page pour relayer
+  chaque clic à `main.js`, qui remet la fenêtre au premier plan par un script KWin (`workspace.activeWindow`).
+  Ce script sert aussi au clic sur l'icône de la zone de notification et au relancement de l'application.
 - **Fermer, c'est réduire** : le bouton reste dans la barre des tâches, avec sa bulle. Pour quitter : clic droit
   sur l'icône de la zone de notification → *Quitter*.
   Sauf à la déconnexion ou à l'extinction : KWin demande alors à chaque fenêtre de se fermer, et une

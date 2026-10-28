@@ -12,6 +12,26 @@ contextBridge.executeInMainWorld({
   },
 });
 
+// Clic sur une notification système : Teams ouvre la conversation, mais son window.focus() laisse la fenêtre réduite.
+// Chaque notification de la page signale son clic par un événement de window (DOM commun aux deux mondes), relayé à
+// main.js qui remet la fenêtre au premier plan. Electron n'affiche pas les notifications du service worker de Teams :
+// toutes passent par ce constructeur.
+const CLIC_NOTIFICATION = 'electron-teams-notification-cliquee';
+contextBridge.executeInMainWorld({
+  func: (evenement) => {
+    const Origine = window.Notification;
+    if (!Origine) return;
+    window.Notification = class Notification extends Origine {
+      constructor(titre, options) {
+        super(titre, options);
+        this.addEventListener('click', () => window.dispatchEvent(new Event(evenement)));
+      }
+    };
+  },
+  args: [CLIC_NOTIFICATION],
+});
+window.addEventListener(CLIC_NOTIFICATION, () => ipcRenderer.send('notification-cliquee'));
+
 // Statut de disponibilité : lu dans Teams (attributs aria-label et title), envoyé à main.js pour la pastille
 // de la zone de notification. Seule la page principale l'envoie, pas les cadres intégrés.
 const INTERVALLE_PRESENCE_MS = 5000;
