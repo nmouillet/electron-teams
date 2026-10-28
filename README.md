@@ -21,15 +21,16 @@ mais le code est réécrit et bien plus court : pas de profils multiples, pas de
 ```bash
 sudo pacman -S --needed electron glib2
 git clone https://github.com/nmouillet/electron-teams.git ~/Projets/_perso/electron-teams
-~/Projets/_perso/electron-teams/install.sh            # avec démarrage automatique
-~/Projets/_perso/electron-teams/install.sh --sans-demarrage
+~/Projets/_perso/electron-teams/install.sh
+~/Projets/_perso/electron-teams/install.sh --demarrage   # avec démarrage automatique
 ~/Projets/_perso/electron-teams/install.sh --desinstaller
 ```
 
 `install.sh` ne demande aucun droit admin. Il crée `~/.local/share/applications/electron-teams.desktop`
 (icône donnée par son chemin complet, voir plus bas), installe les icônes dans `~/.local/share/icons/hicolor`,
-associe les liens `msteams:` (« Ouvrir dans l'application Teams ») à electron-teams et, sauf
-`--sans-demarrage`, crée `~/.config/autostart/electron-teams.desktop` (lancement réduit, option `--masquee`).
+associe les liens `msteams:` (« Ouvrir dans l'application Teams ») à electron-teams et, seulement avec
+`--demarrage`, crée `~/.config/autostart/electron-teams.desktop` (lancement réduit, option `--masquee`) ;
+sans cette option, il le retire s'il existe.
 Le lanceur pointe vers le dossier du dépôt : relancer `install.sh` si le dossier est déplacé.
 
 ## Fonctionnement

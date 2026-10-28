@@ -3,10 +3,11 @@
 # - lanceur ~/.local/share/applications/electron-teams.desktop (menu de Plasma) ;
 # - icônes dans ~/.local/share/icons/hicolor ;
 # - liens msteams: (réunions) ouverts dans electron-teams ;
-# - démarrage avec la session, réduit dans la barre des tâches (sauf avec --sans-demarrage).
+# - démarrage avec la session, réduit dans la barre des tâches, seulement avec --demarrage
+#   (sans cette option, un démarrage automatique existant est retiré).
 # Prérequis : sudo pacman -S --needed electron glib2
 #
-# Usage : ./install.sh [--sans-demarrage]      ./install.sh --desinstaller
+# Usage : ./install.sh [--demarrage]      ./install.sh --desinstaller
 set -euo pipefail
 
 # En fin de script (réussite ou erreur), attendre une touche avant de rendre la main.
@@ -54,11 +55,11 @@ EOF
 }
 
 lanceur "" > "$APPS/$NOM.desktop"
-if [ "${1:-}" = --sans-demarrage ]; then
-    rm -f "$DEMARRAGE/$NOM.desktop"
-else
+if [ "${1:-}" = --demarrage ]; then
     mkdir -p "$DEMARRAGE"
     { lanceur " --masquee"; echo "X-KDE-autostart-phase=2"; } > "$DEMARRAGE/$NOM.desktop"
+else
+    rm -f "$DEMARRAGE/$NOM.desktop"
 fi
 update-desktop-database -q "$APPS" 2>/dev/null || true
 # Liens « Ouvrir dans l'application Teams » (msteams:) des réunions.
