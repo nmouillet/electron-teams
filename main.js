@@ -53,6 +53,8 @@ const DOMAINES_MICROSOFT = [
   'cloud.microsoft', 'teams.microsoft.com', 'teams.live.com', 'skype.com', 'office.com', 'office.net',
   'office365.com', 'live.com', 'microsoftonline.com', 'microsoft.com', 'msauth.net', 'msftauth.net',
 ];
+// Nom de la fenêtre flottante de réunion ouverte par preload.js (même valeur que là-bas).
+const FENETRE_FLOTTANTE = 'electron-teams-fenetre-flottante';
 // Appels : micro et caméra (media), partage d'écran (display-capture), choix de la sortie audio,
 // écran gardé allumé (screen-wake-lock), placement des fenêtres de réunion (window-management).
 const PERMISSIONS = new Set([
@@ -310,7 +312,17 @@ function creerFenetre(masquee, url) {
   if (DEBUG) wc.openDevTools({ mode: 'detach' });
 
   // Nouvelles fenêtres : celles de Microsoft (connexion, conversation détachée) restent ici, le reste va dans le navigateur.
-  wc.setWindowOpenHandler(({ url: cible }) => {
+  wc.setWindowOpenHandler(({ url: cible, frameName }) => {
+    if (frameName === FENETRE_FLOTTANTE && cible === 'about:blank') {
+      log('fenêtre flottante');
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          title: 'Teams – réunion', icon: ICONE, autoHideMenuBar: true, alwaysOnTop: true, useContentSize: true,
+          backgroundColor: '#1b1b1b',
+        },
+      };
+    }
     if (cible === 'about:blank' || (estMicrosoft(cible) && !estSafeLinks(cible))) {
       log('fenêtre interne :', cible);
       return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: ICONE } };

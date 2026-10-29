@@ -12,6 +12,72 @@ contextBridge.executeInMainWorld({
   },
 });
 
+// Réunion quittée pour un autre onglet : Teams place la vidéo dans une fenêtre flottante (Document Picture-in-Picture),
+// qu'Electron crée sans jamais l'afficher. L'API est refaite avec une fenêtre ordinaire de même origine, vide comme
+// celle de Chromium, que main.js reconnaît à son nom (même valeur que là-bas) et garde au premier plan. Sa fermeture (pagehide) rend la vidéo
+// à la fenêtre principale.
+const FENETRE_FLOTTANTE = 'electron-teams-fenetre-flottante';
+contextBridge.executeInMainWorld({
+  func: (nom) => {
+    if (!('documentPictureInPicture' in window)) return;
+    let flottante = null;
+
+    class DocumentPictureInPictureEvent extends Event {
+      constructor(type, init = {}) {
+        super(type, init);
+        this.window = init.window;
+      }
+    }
+
+    // Styles de la page recopiés dans la fenêtre flottante (option copyStyleSheets).
+    function copierStyles(cible) {
+      for (const feuille of document.styleSheets) {
+        try {
+          const style = cible.document.createElement('style');
+          style.textContent = [...feuille.cssRules].map((regle) => regle.cssText).join('\n');
+          cible.document.head.append(style);
+        } catch {
+          if (!feuille.href) continue;
+          const lien = cible.document.createElement('link');
+          lien.rel = 'stylesheet';
+          lien.href = feuille.href;
+          cible.document.head.append(lien);
+        }
+      }
+    }
+
+    class DocumentPictureInPicture extends EventTarget {
+      onenter = null;
+
+      get window() {
+        return flottante && !flottante.closed ? flottante : null;
+      }
+
+      async requestWindow({ width = 400, height = 300, copyStyleSheets = false } = {}) {
+        this.window?.close();
+        flottante = window.open('', nom, `popup,width=${Math.round(width)},height=${Math.round(height)}`);
+        if (!flottante) throw new DOMException('Fenêtre flottante refusée', 'NotAllowedError');
+        if (copyStyleSheets) copierStyles(flottante);
+        const evenement = new DocumentPictureInPictureEvent('enter', { window: flottante });
+        this.dispatchEvent(evenement);
+        this.onenter?.(evenement);
+        return flottante;
+      }
+    }
+
+    for (const cible of [window, Window.prototype]) {
+      delete cible.documentPictureInPicture;
+    }
+    const api = new DocumentPictureInPicture();
+    Object.defineProperty(window, 'documentPictureInPicture', { get: () => api, configurable: true, enumerable: true });
+    window.DocumentPictureInPicture = DocumentPictureInPicture;
+    window.DocumentPictureInPictureEvent = DocumentPictureInPictureEvent;
+    // Comme dans Chromium, la fenêtre flottante se ferme avec la page qui l'a ouverte.
+    window.addEventListener('pagehide', () => api.window?.close());
+  },
+  args: [FENETRE_FLOTTANTE],
+});
+
 // Clic sur une notification système : Teams ouvre la conversation, mais son window.focus() laisse la fenêtre réduite.
 // Chaque notification de la page signale son clic par un événement de window (DOM commun aux deux mondes), relayé à
 // main.js qui remet la fenêtre au premier plan. Electron n'affiche pas les notifications du service worker de Teams :
@@ -33,7 +99,7 @@ contextBridge.executeInMainWorld({
 window.addEventListener(CLIC_NOTIFICATION, () => ipcRenderer.send('notification-cliquee'));
 
 // Statut de disponibilité : lu dans Teams (attributs aria-label et title), envoyé à main.js pour la pastille
-// de la zone de notification. Seule la page principale l'envoie, pas les cadres intégrés.
+// de la zone de notification. Seule la page principale l'envoie, pas les cadres intégrés ni les fenêtres qu'elle ouvre.
 const INTERVALLE_PRESENCE_MS = 5000;
 // Lectures sans statut à suivre avant de le considérer absent : évite de changer d'icône pendant un redessin de l'en-tête.
 const LECTURES_SANS_STATUT = 3;
@@ -76,7 +142,7 @@ function lirePresence() {
   return null;
 }
 
-if (window.top === window) {
+if (window.top === window && !window.opener) {
   let dernier;
   let sansStatut = 0;
   setInterval(() => {
